@@ -15,6 +15,11 @@ UOpenDoor::UOpenDoor()
 	// ...
 }
 
+UAudioComponent* UOpenDoor::GetDoorOpenAudioComponent()
+{
+	if(!DoorOpenAudioComponent) this->DoorOpenAudioComponent =  GetOwner()->FindComponentByClass<UAudioComponent>();
+	return DoorOpenAudioComponent;
+}
 
 // Called when the game starts
 void UOpenDoor::BeginPlay()
@@ -24,7 +29,10 @@ void UOpenDoor::BeginPlay()
 	InitialYaw = ActorRotator.Yaw;
 	OpenYaw = InitialYaw + 90.0f;
 	TargetYaw = InitialYaw;
+	this->DoorOpenAudioComponent =  GetOwner()->FindComponentByClass<UAudioComponent>();
+	if(!DoorOpenAudioComponent) UE_LOG(LogTemp, Warning,TEXT("Missing Audio Component in: %s"), *GetOwner()->GetName());
 	if(!OpenDoorTV) UE_LOG(LogTemp, Warning,TEXT("OpenDoorTV is NULL in Actor: %s"), *GetOwner()->GetName());
+	
 	// ...
 	
 }
@@ -32,7 +40,34 @@ void UOpenDoor::BeginPlay()
 
 void UOpenDoor::OpenDoor(float DeltaTime)
 {
+	if(DoorState == CLOSED && IsTriggerContainsAnyActor()){
+		UE_LOG(LogTemp, Warning, TEXT("Door Opening..."));
+		LastOpenTime = GetWorld()->GetTimeSeconds();
+		TargetYaw=OpenYaw;
+		DoorState = OPENING;
+		UAudioComponent* Audio = GetDoorOpenAudioComponent();
+		if(Audio) Audio->Play();
+	}else if(DoorState == OPENED && IsOpenForMaxSeconds() && !IsTriggerContainsAnyActor())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Door Closing..."));
+		TargetYaw=InitialYaw;
+		DoorState = CLOSING;
+		UAudioComponent* Audio = GetDoorOpenAudioComponent();
+		if(Audio) Audio->Play();
+	}
+	
 	FRotator ActorRotator = GetOwner()->GetActorRotation();
+	if(abs(ActorRotator.Yaw - TargetYaw) < 0.1f)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Door is Stable..."));
+		if(TargetYaw == InitialYaw)
+		{
+			DoorState = CLOSED;
+		}else
+		{
+			DoorState = OPENED;
+		}
+	}
 	ActorRotator.Yaw = FMath::Lerp(ActorRotator.Yaw, TargetYaw, DeltaTime*3.0f);
 	GetOwner()->SetActorRotation(ActorRotator);
 }
@@ -41,14 +76,8 @@ void UOpenDoor::OpenDoor(float DeltaTime)
 void UOpenDoor::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-	if(IsTriggerContainsAnyActor())
-	{
-		LastOpenTime = GetWorld()->GetTimeSeconds();
-		TargetYaw=OpenYaw;
-	}else if(IsOpenForMaxSeconds())
-	{
-		TargetYaw=InitialYaw;
-	}
+	
+	
 	OpenDoor(DeltaTime);
 	// ...
 }
